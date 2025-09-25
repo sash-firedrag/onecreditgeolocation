@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Location Punch Attendance</title>
+  <style>
+    :root {
+      --bg-color: #1e293b;
+      --text-color: #ffffff;
+      --card-color: #334155;
+      --accent-color: #22d3ee;
+      --button-hover: #0ea5e9;
+    }
+
+    body.light {
+      --bg-color: #f1f5f9;
+      --text-color: #1e293b;
+      --card-color: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      flex-direction: column;
+      transition: background-color 0.4s, color 0.4s;
+    }
+
+    .card {
+      background-color: var(--card-color);
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+      width: 90%;
+      max-width: 500px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    h2 {
+      color: var(--accent-color);
+    }
+
+    input[type="text"] {
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      width: 80%;
+      font-size: 16px;
+      margin-bottom: 15px;
+    }
+
+    button {
+      background-color: var(--accent-color);
+      color: #0f172a;
+      border: none;
+      padding: 10px 20px;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: 0.3s ease;
+      margin: 5px;
+    }
+
+    button:hover {
+      background-color: var(--button-hover);
+    }
+
+    #status {
+      margin-top: 15px;
+      font-weight: bold;
+    }
+
+    .history {
+      margin-top: 10px;
+      text-align: left;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .history-entry {
+      background: rgba(255,255,255,0.05);
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .footer {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-top: 10px;
+    }
+
+    .toggle-btn {
+      position: absolute;
+      top: 20px;
+      right: 30px;
+      background: none;
+      border: 2px solid var(--accent-color);
+      color: var(--accent-color);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .toggle-btn:hover {
+      background: var(--accent-color);
+      color: #0f172a;
+    }
+  </style>
+</head>
+<body class="dark">
+  <button class="toggle-btn" onclick="toggleMode()">🌙 Dark</button>
+
+  <div class="card">
+    <h2>📍 Location Punch Attendance</h2>
+    <button type="button" onclick="punch('in')">Punch In</button>
+    <button type="button" onclick="punch('out')">Punch Out</button>
+    <p id="status"></p>
+
+    <div class="history" id="history">
+      <strong>Recent Records:</strong>
+      <div id="historyList">Loading...</div>
+    </div>
+
+  <div class="footer"><button type="button" onclick="window.location.href='welcome.html'">Log out</button> Your location is required for attendance</div>
+  </div>
+
+  <script>
+    let darkMode = true;
+
+    function toggleMode() {
+      const body = document.body;
+      darkMode = !darkMode;
+      body.className = darkMode ? 'dark' : 'light';
+      document.querySelector('.toggle-btn').innerText = darkMode ? "🌙 Dark" : "☀️ Light";
+    }
+
+    async function punch(type) {
+      const statusEl = document.getElementById("status");
+      statusEl.innerText = "📍 Locating...";
+
+      if (!navigator.geolocation) {
+        statusEl.innerText = "⚠️ Geolocation not supported.";
+        statusEl.style.color = "red";
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+
+        try {
+          const res = await fetch(`http://localhost:3000/api/punch-${type}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ lat, lon }),
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            statusEl.innerText = `✅ ${data.message}`;
+            statusEl.style.color = "#22c55e";
+            loadHistory();
+          } else {
+            statusEl.innerText = `❌ ${data.message}`;
+            statusEl.style.color = "orange";
+            if (res.status === 401) window.location.href = "login.html";
+          }
+        } catch (err) {
+          statusEl.innerText = "⚠️ Server error: " + err.message;
+          statusEl.style.color = "red";
+        }
+      }, () => {
+        statusEl.innerText = "❌ Location permission denied.";
+        statusEl.style.color = "red";
+      });
+    }
+
+    async function loadHistory() {
+      const list = document.getElementById("historyList");
+      list.innerHTML = "Loading...";
+      try {
+        const res = await fetch("http://localhost:3000/api/punches", { credentials: "include" });
+        if (res.status === 401) {
+          window.location.href = "login.html";
+          return;
+        }
+        const punches = await res.json();
+        if (punches.length === 0) {
+          list.innerHTML = "No punches yet.";
+          return;
+        }
+        list.innerHTML = punches.slice(0, 5).map(p => {
+          const punchIn = p.punchInTime ? new Date(p.punchInTime).toLocaleString() : '❌';
+          const punchOut = p.punchOutTime ? new Date(p.punchOutTime).toLocaleString() : '⏳ Pending';
+          return `
+            <div class="history-entry">
+              🟢 In: ${punchIn}<br/>
+              🔴 Out: ${punchOut}<br/>
+              📍 Lat: ${p.location.lat.toFixed(4)}, Lon: ${p.location.lon.toFixed(4)}
+            </div>
+          `;
+        }).join("");
+      } catch (err) {
+        list.innerHTML = "⚠️ Failed to load history. " + err.message;
+      }
+    }
+
+    // ...existing code...
+
+    loadHistory();
+  </script>
+</body>
+</html>

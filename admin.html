@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Attendance Viewer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f1f5f9;
+      color: #1e293b;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 50px auto;
+      background: white;
+      padding: 30px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      border-radius: 10px;
+    }
+
+    h1 {
+      text-align: center;
+      color: #0f172a;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th, td {
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      text-align: center;
+    }
+
+    th {
+      background-color: #e2e8f0;
+    }
+
+    .logout {
+      float: right;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <button class="logout" onclick="logout()">Logout</button>
+    <h1>📊 Attendance Records (Admin)</h1>
+    <table id="attendanceTable">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Punch In</th>
+          <th>Punch Out</th>
+          <th>Latitude</th>
+          <th>Longitude</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="5">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    async function loadAdminData() {
+      const token = localStorage.getItem("token");
+      if (!token) return alert("You must login as admin.");
+
+      try {
+        const res = await fetch("http://localhost:3000/api/admin/attendance", {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+
+        if (!res.ok) throw new Error("Access denied or server error");
+
+        const data = await res.json();
+        const tbody = document.querySelector("#attendanceTable tbody");
+        tbody.innerHTML = data.map(entry => {
+          return `<tr>
+            <td>${entry.username}</td>
+            <td>${entry.punchInTime ? new Date(entry.punchInTime).toLocaleString() : '-'}</td>
+            <td>${entry.punchOutTime ? new Date(entry.punchOutTime).toLocaleString() : '⏳ Pending'}</td>
+            <td>${entry.location.lat.toFixed(4)}</td>
+            <td>${entry.location.lon.toFixed(4)}</td>
+          </tr>`
+        }).join("");
+      } catch (err) {
+        document.querySelector("#attendanceTable tbody").innerHTML = `<tr><td colspan='5'>⚠️ ${err.message}</td></tr>`;
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem("token");
+      window.location.href = "index.html"; // change to your login page
+    }
+
+    loadAdminData();
+  </script>
+</body>
+</html>
