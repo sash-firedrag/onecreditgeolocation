@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Attendance Viewer</title>
+  <style>
+    :root {
+      --bg-color: #1e293b;
+      --text-color: #ffffff;
+      --card-color: #334155;
+      --accent-color: #22d3ee;
+      --button-hover: #0ea5e9;
+    }
+
+    body.light {
+      --bg-color: #f1f5f9;
+      --text-color: #1e293b;
+      --card-color: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      flex-direction: column;
+      transition: background-color 0.4s, color 0.4s;
+    }
+
+    .card {
+      background-color: var(--card-color);
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+      width: 90%;
+      max-width: 1200px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      color: var(--accent-color);
+      margin-bottom: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      background-color: var(--card-color);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      text-align: center;
+    }
+
+    th {
+      background-color: rgba(34, 211, 238, 0.1);
+      color: var(--accent-color);
+      font-weight: bold;
+    }
+
+    tbody tr:hover {
+      background-color: rgba(255,255,255,0.05);
+    }
+
+    .logout-btn {
+      background-color: var(--accent-color);
+      color: #0f172a;
+      border: none;
+      padding: 10px 20px;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: 0.3s ease;
+      margin-bottom: 20px;
+    }
+
+    .logout-btn:hover {
+      background-color: var(--button-hover);
+    }
+
+    .loading, .error {
+      padding: 20px;
+      font-size: 16px;
+    }
+
+    .error {
+      color: #ef4444;
+    }
+
+    .toggle-btn {
+      position: absolute;
+      top: 20px;
+      right: 30px;
+      background: none;
+      border: 2px solid var(--accent-color);
+      color: var(--accent-color);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .toggle-btn:hover {
+      background: var(--accent-color);
+      color: #0f172a;
+    }
+
+    .stats {
+      display: flex;
+      justify-content: space-around;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .stat-card {
+      background-color: rgba(34, 211, 238, 0.1);
+      padding: 15px;
+      border-radius: 8px;
+      margin: 5px;
+      min-width: 120px;
+    }
+
+    .stat-number {
+      font-size: 24px;
+      font-weight: bold;
+      color: var(--accent-color);
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-color);
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body class="dark">
+  <button class="toggle-btn" onclick="toggleMode()">🌙 Dark</button>
+
+  <div class="card">
+    <button class="logout-btn" onclick="logout()">Logout</button>
+    <h1>📊 Admin Attendance Dashboard</h1>
+    
+    <div class="stats" id="stats">
+      <div class="stat-card">
+        <div class="stat-number" id="totalUsers">0</div>
+        <div class="stat-label">Total Users</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="totalPunches">0</div>
+        <div class="stat-label">Total Punches</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="activeToday">0</div>
+        <div class="stat-label">Active Today</div>
+      </div>
+    </div>
+
+    <table id="attendanceTable">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Punch In</th>
+          <th>Punch Out</th>
+          <th>Latitude</th>
+          <th>Longitude</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="5" class="loading">Loading attendance data...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    let darkMode = true;
+
+    function toggleMode() {
+      const body = document.body;
+      darkMode = !darkMode;
+      body.className = darkMode ? 'dark' : 'light';
+      document.querySelector('.toggle-btn').innerText = darkMode ? "🌙 Dark" : "☀️ Light";
+    }
+
+    async function loadAdminData() {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        window.location.href = "login.html";
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/admin/attendance", {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+
+        if (!res.ok) {
+          if (res.status === 401) {
+            localStorage.removeItem("token");
+            window.location.href = "login.html";
+            return;
+          }
+          throw new Error(`Server error: ${res.status}`);
+        }
+
+        const data = await res.json();
+        
+        // Calculate stats
+        const uniqueUsers = new Set(data.map(entry => entry.username)).size;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const activeToday = new Set(
+          data.filter(entry => {
+            const punchDate = new Date(entry.punchInTime);
+            punchDate.setHours(0, 0, 0, 0);
+            return punchDate.getTime() === today.getTime();
+          }).map(entry => entry.username)
+        ).size;
+
+        // Update stats
+        document.getElementById('totalUsers').textContent = uniqueUsers;
+        document.getElementById('totalPunches').textContent = data.length;
+        document.getElementById('activeToday').textContent = activeToday;
+
+        // Update table
+        const tbody = document.getElementById("tableBody");
+        if (data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5">No attendance records found.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = data.map(entry => {
+          const punchIn = entry.punchInTime ? new Date(entry.punchInTime).toLocaleString() : '-';
+          const punchOut = entry.punchOutTime ? new Date(entry.punchOutTime).toLocaleString() : '⏳ Pending';
+          return `<tr>
+            <td>${entry.username}</td>
+            <td>${punchIn}</td>
+            <td>${punchOut}</td>
+            <td>${entry.location.lat.toFixed(4)}</td>
+            <td>${entry.location.lon.toFixed(4)}</td>
+          </tr>`;
+        }).join("");
+
+      } catch (err) {
+        document.getElementById("tableBody").innerHTML = `<tr><td colspan="5" class="error">⚠️ Failed to load data: ${err.message}</td></tr>`;
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem("token");
+      window.location.href = "welcome.html";
+    }
+
+    // Load data on page load
+    loadAdminData();
+  </script>
+</body>
+</html>

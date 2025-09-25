@@ -3,13 +3,16 @@ const express = require("express");
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+const path = require('path');
 
 const app = express();
 const PORT = 3000;
 
-mongoose.connect("mongodb://127.0.0.1:27017/location-attendance", {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
+mongoose.connect("mongodb://127.0.0.1:27017/location-attendance").then(() => {
+  console.log('Connected to MongoDB');
+}).catch(err => {
+  console.error('MongoDB connection error:', err);
+  process.exit(1);
 });
 
 
@@ -33,11 +36,13 @@ const Punch = mongoose.model("Punch", PunchSchema);
 
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 app.use(cors({
   origin: 'http://localhost:3000',
   credentials: true
 }));
+app.use(express.static(path.join(__dirname, 'frontend')));
 app.use(bodyParser.json());
 app.use(session({
   secret: 'attendance_secret',
@@ -47,36 +52,49 @@ app.use(session({
 }));
 // Signup API
 app.post('/api/signup', async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ message: 'Username and password required' });
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ message: 'Username and password required' });
+    }
+    const existing = await User.findOne({ username });
+    if (existing) {
+      return res.status(409).json({ message: 'Username already exists' });
+    }
+    const hash = await bcrypt.hash(password, 10);
+    const user = new User({ username, password: hash });
+    await user.save();
+    res.json({ message: 'Signup successful' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
   }
-  const existing = await User.findOne({ username });
-  if (existing) {
-    return res.status(409).json({ message: 'Username already exists' });
-  }
-  const hash = await bcrypt.hash(password, 10);
-  const user = new User({ username, password: hash });
-  await user.save();
-  res.json({ message: 'Signup successful' });
 });
 
 // Login API
 app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ message: 'Username and password required' });
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ message: 'Username and password required' });
+    }
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    req.session.user = { username: user.username };
+    let response = { message: 'Login successful' };
+    if (username === 'admin') {
+      const token = jwt.sign({ username }, 'attendance_secret');
+      response.token = token;
+    }
+    res.json(response);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
   }
-  const user = await User.findOne({ username });
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid credentials' });
-  }
-  const valid = await bcrypt.compare(password, user.password);
-  if (!valid) {
-    return res.status(401).json({ message: 'Invalid credentials' });
-  }
-  req.session.user = { username: user.username };
-  res.json({ message: 'Login successful' });
 });
 
 // Logout API
@@ -92,6 +110,24 @@ function requireAuth(req, res, next) {
     next();
   } else {
     res.status(401).json({ message: 'Unauthorized' });
+  }
+}
+
+function requireAdmin(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'No token provided' });
+  }
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, 'attendance_secret');
+    if (decoded.username !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+    req.user = decoded;
+    next();
+  } catch (err) {
+    res.status(401).json({ message: 'Invalid token' });
   }
 }
 
@@ -116,43 +152,69 @@ function getDistance(lat1, lon1, lat2, lon2) {
 
 // Punch In API (requires auth)
 app.post("/api/punch-in", requireAuth, async (req, res) => {
-  const username = req.session.user.username;
-  const { lat, lon } = req.body;
-  const distance = getDistance(lat, lon, OFFICE_LAT, OFFICE_LON);
-  if (distance > GEOFENCE_RADIUS_METERS) {
-    return res.status(403).json({ message: "Outside geofence area" });
+  try {
+    const username = req.session.user.username;
+    const { lat, lon } = req.body;
+    const distance = getDistance(lat, lon, OFFICE_LAT, OFFICE_LON);
+    if (distance > GEOFENCE_RADIUS_METERS) {
+      return res.status(403).json({ message: "Outside geofence area" });
+    }
+    const punch = new Punch({
+      username,
+      punchInTime: new Date(),
+      location: { lat, lon },
+    });
+    await punch.save();
+    res.json({ message: "Punch In successful" });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
   }
-  const punch = new Punch({
-    username,
-    punchInTime: new Date(),
-    location: { lat, lon },
-  });
-  await punch.save();
-  res.json({ message: "Punch In successful" });
 });
 
 // Punch Out API (requires auth)
 app.post("/api/punch-out", requireAuth, async (req, res) => {
-  const username = req.session.user.username;
-  const { lat, lon } = req.body;
-  const distance = getDistance(lat, lon, OFFICE_LAT, OFFICE_LON);
-  if (distance > GEOFENCE_RADIUS_METERS) {
-    return res.status(403).json({ message: "Outside geofence area" });
+  try {
+    const username = req.session.user.username;
+    const { lat, lon } = req.body;
+    const distance = getDistance(lat, lon, OFFICE_LAT, OFFICE_LON);
+    if (distance > GEOFENCE_RADIUS_METERS) {
+      return res.status(403).json({ message: "Outside geofence area" });
+    }
+    const latest = await Punch.findOne({ username, punchOutTime: null }).sort({ punchInTime: -1 });
+    if (!latest) {
+      return res.status(400).json({ message: "No active punch-in found" });
+    }
+    latest.punchOutTime = new Date();
+    await latest.save();
+    res.json({ message: "Punch Out successful" });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
   }
-  const latest = await Punch.findOne({ username, punchOutTime: null }).sort({ punchInTime: -1 });
-  if (!latest) {
-    return res.status(400).json({ message: "No active punch-in found" });
-  }
-  latest.punchOutTime = new Date();
-  await latest.save();
-  res.json({ message: "Punch Out successful" });
 });
 
 
 // Get all punches (requires auth)
 app.get("/api/punches", requireAuth, async (req, res) => {
-  const data = await Punch.find({ username: req.session.user.username }).sort({ punchInTime: -1 });
-  res.json(data);
+  try {
+    const data = await Punch.find({ username: req.session.user.username }).sort({ punchInTime: -1 });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.get('/api/admin/attendance', requireAdmin, async (req, res) => {
+  try {
+    const data = await Punch.find({}).sort({ punchInTime: -1 });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ message: 'Internal server error' });
 });
 
 app.listen(PORT, () => {

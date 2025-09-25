@@ -75,7 +75,7 @@
       if (!token) return alert("You must login as admin.");
 
       try {
-        const res = await fetch("http://localhost:3000/api/admin/attendance", {
+        const res = await fetch("/api/admin/attendance", {
           headers: {
             "Authorization": `Bearer ${token}`
           }

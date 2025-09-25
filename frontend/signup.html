@@ -51,7 +51,12 @@
           credentials: 'include',
           body: JSON.stringify({ username, password })
         });
-        const data = await res.json();
+        let data;
+        try {
+          data = await res.json();
+        } catch (e) {
+          data = { message: 'Invalid response from server' };
+        }
         if (res.ok) {
           statusEl.innerText = 'Signup successful! Redirecting to login...';
           statusEl.style.color = '#22c55e';

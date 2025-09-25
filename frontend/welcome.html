@@ -37,6 +37,19 @@
 			body.className = darkMode ? 'dark' : 'light';
 			document.querySelector('.toggle-btn').innerText = darkMode ? "🌙 Dark" : "☀️ Light";
 		}
+
+		async function checkLogin() {
+			try {
+				const res = await fetch('/api/punches', { credentials: 'include' });
+				if (res.ok) {
+					window.location.href = 'index.html';
+				}
+			} catch (e) {
+				// stay on welcome
+			}
+		}
+
+		checkLogin();
 	</script>
 </body>
 </html>

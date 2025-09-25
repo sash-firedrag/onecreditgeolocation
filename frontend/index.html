@@ -136,7 +136,7 @@
       <div id="historyList">Loading...</div>
     </div>
 
-  <div class="footer"><button type="button" onclick="window.location.href='welcome.html'">Log out</button> Your location is required for attendance</div>
+  <div class="footer"><button type="button" onclick="logout()">Log out</button> Your location is required for attendance</div>
   </div>
 
   <script>
@@ -171,14 +171,19 @@
             body: JSON.stringify({ lat, lon }),
           });
 
-          const data = await res.json();
+          let data;
+          try {
+            data = await res.json();
+          } catch (e) {
+            data = { message: 'Invalid response from server' };
+          }
 
           if (res.ok) {
             statusEl.innerText = `✅ ${data.message}`;
             statusEl.style.color = "#22c55e";
             loadHistory();
           } else {
-            statusEl.innerText = `❌ ${data.message}`;
+            statusEl.innerText = `❌ ${data.message || 'Error'}`;
             statusEl.style.color = "orange";
             if (res.status === 401) window.location.href = "login.html";
           }
@@ -201,6 +206,9 @@
           window.location.href = "login.html";
           return;
         }
+        if (!res.ok) {
+          throw new Error(`Server error: ${res.status}`);
+        }
         const punches = await res.json();
         if (punches.length === 0) {
           list.innerHTML = "No punches yet.";
@@ -222,9 +230,14 @@
       }
     }
 
-    // ...existing code...
-
-    loadHistory();
+    async function logout() {
+      try {
+        await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+      } catch (err) {
+        console.error('Logout error:', err);
+      }
+      window.location.href = 'welcome.html';
+    }
   </script>
 </body>
 </html>
